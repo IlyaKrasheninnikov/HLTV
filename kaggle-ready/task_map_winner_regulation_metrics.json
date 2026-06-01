@@ -1,0 +1,21 @@
+{
+  "task": "map_winner_regulation",
+  "classes": [
+    "t1",
+    "t2",
+    "tie"
+  ],
+  "n_train": 4968,
+  "n_val": 1064,
+  "n_test": 1064,
+  "log_loss": 0.9336196624172569,
+  "accuracy": 0.5479323308270677,
+  "baseline_logloss": 0.9645727107582103,
+  "best_iter": 38,
+  "n_features": 101,
+  "class_distribution_test": {
+    "t1": 555,
+    "t2": 383,
+    "tie": 126
+  }
+}

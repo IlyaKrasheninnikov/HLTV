@@ -1,0 +1,14 @@
+{
+  "task": "t2_rounds",
+  "n_train": 4968,
+  "n_val": 1064,
+  "n_test": 1064,
+  "mae": 3.2415451877563743,
+  "rmse": 3.998598459816568,
+  "baseline_mae": 3.428040209218699,
+  "baseline_rmse": 4.182158060928707,
+  "y_mean_train": 10.597826086956522,
+  "y_std_train": 4.013477810031656,
+  "best_iter": 120,
+  "n_features": 101
+}

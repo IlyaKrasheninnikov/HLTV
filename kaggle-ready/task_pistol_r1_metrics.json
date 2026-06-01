@@ -1,0 +1,12 @@
+{
+  "task": "pistol_r1",
+  "n_train": 4968,
+  "n_val": 1064,
+  "n_test": 1064,
+  "log_loss": 0.6890169465804885,
+  "auc": 0.52986663817816,
+  "brier": 0.24793953407470817,
+  "baseline_logloss": 0.6892395922517367,
+  "best_iter": 12,
+  "n_features": 101
+}

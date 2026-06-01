@@ -1,0 +1,25 @@
+{
+  "val": {
+    "log_loss": 0.6540214077397001,
+    "auc": 0.7084521980835345,
+    "brier": 0.23067024151005444,
+    "n": 469,
+    "baseline_logloss_majority": 0.6903600056079884
+  },
+  "test_raw": {
+    "log_loss": 0.65177988450238,
+    "auc": 0.695535283865465,
+    "brier": 0.22961972005446518,
+    "n": 469,
+    "baseline_logloss_majority": 0.6835122211799467
+  },
+  "test_calibrated": {
+    "log_loss": 0.7006551190536969,
+    "auc": 0.6896484592279453,
+    "brier": 0.22030078928582167,
+    "n": 469,
+    "baseline_logloss_majority": 0.6835122211799467
+  },
+  "best_iteration": 12,
+  "num_features": 56
+}

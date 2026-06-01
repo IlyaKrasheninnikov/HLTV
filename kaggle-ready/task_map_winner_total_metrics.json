@@ -1,0 +1,12 @@
+{
+  "task": "map_winner_total",
+  "n_train": 4968,
+  "n_val": 1064,
+  "n_test": 1064,
+  "log_loss": 0.6425492106551013,
+  "auc": 0.660898021971643,
+  "brier": 0.22563162975720263,
+  "baseline_logloss": 0.6800236404750845,
+  "best_iter": 57,
+  "n_features": 101
+}

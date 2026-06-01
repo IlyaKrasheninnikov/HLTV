@@ -1,0 +1,12 @@
+{
+  "task": "match_winner",
+  "n_train": 2263,
+  "n_val": 484,
+  "n_test": 484,
+  "log_loss": 0.6047938105351298,
+  "auc": 0.7141971371882087,
+  "brier": 0.20892513635747245,
+  "baseline_logloss": 0.6749710813275124,
+  "best_iter": 66,
+  "n_features": 56
+}

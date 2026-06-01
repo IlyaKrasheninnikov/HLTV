@@ -73,6 +73,29 @@ Scraped from hltv.org. 3,288 CS2 matches with ≥1 star (Majors, IEM, BLAST, ESL
 
 Each match contributes ~2-5 played maps, each map contributes ~16-30 rounds.
 
+## Modern-architecture experiments (Kaggle GPU)
+
+Two scripts that try modern architectures aimed at beating the LightGBM + meta-ensemble pipeline:
+
+```python
+# TabPFN v2 — foundation model for small tabular. Often beats GBDT at this scale.
+!pip install -q tabpfn   # ~700MB download on first run
+!python /kaggle/input/<slug>/tabpfn_run.py \
+    --input /kaggle/input/<slug>/ --output /kaggle/working/out
+
+# Round-Transformer — 4-layer encoder over the round timeline. Aims to beat
+# the round-LightGBM on the live in-game task (current best AUC 0.842).
+!python /kaggle/input/<slug>/transformer_rounds.py \
+    --input /kaggle/input/<slug>/ --output /kaggle/working/out \
+    --epochs 30 --batch-size 64
+```
+
+Honest expectations:
+- **TabPFN**: at our row counts (3k pre-match, 7k per-map) it has a real chance of beating tuned LightGBM by 0.01-0.03 AUC. If it does, drop it in as the new task-1 model. If it doesn't, LightGBM stays the champion.
+- **Round-Transformer**: the round-LightGBM hits 0.842 AUC overall but is dominated by `score_diff`. A transformer attends across the round history, which *should* capture momentum and clutch streaks better. Target: 0.86+. If it lands at 0.85, marginal. If 0.87+, real win.
+
+These scripts compete with the LightGBM/ensemble pipeline; results go side-by-side in their own `*_metrics.json` so you can compare directly.
+
 ## Best-result recipe (use this!)
 
 Run these in order. Final results live in `/kaggle/working/out/`.

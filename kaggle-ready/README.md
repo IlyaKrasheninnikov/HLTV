@@ -75,7 +75,7 @@ Each match contributes ~2-5 played maps, each map contributes ~16-30 rounds.
 
 ## Best-result recipe (use this!)
 
-Run these three in order. Final results live in `/kaggle/working/out/`.
+Run these in order. Final results live in `/kaggle/working/out/`.
 
 ```python
 # install
@@ -85,16 +85,39 @@ Run these three in order. Final results live in `/kaggle/working/out/`.
 # 1) baseline (~1 min)
 !python /kaggle/input/<slug>/run.py --input /kaggle/input/<slug>/ --output /kaggle/working/out
 
-# 2) Optuna sweep per task — 80 trials each, ~30-60 min total on Kaggle CPU.
-#    Bump --n-trials for more lift if time allows.
-!python /kaggle/input/<slug>/tune.py --input /kaggle/input/<slug>/ --output /kaggle/working/out --n-trials 80
+# 2) Optuna sweep per task. Deep-tune the two tasks with proven headroom
+#    (match_winner, t1_rounds) at 200 trials each, the rest at 80.
+!python /kaggle/input/<slug>/tune.py --input /kaggle/input/<slug>/ --output /kaggle/working/out \
+    --n-trials 80 \
+    --n-trials-task match_winner=200 \
+    --n-trials-task t1_rounds=200
 
 # 3) Meta-ensemble: OOF tuned-LGB preds -> small GPU NN with 7 heads.
-#    Reads tuned params from /kaggle/working/out automatically.
+#    Auto-detects the tuned params and uses them.
 !python /kaggle/input/<slug>/ensemble.py --input /kaggle/input/<slug>/ --output /kaggle/working/out
+
+# 4) Predict for an existing match in the dataset (uses the tuned + ensemble models)
+!python /kaggle/input/<slug>/predict.py --input /kaggle/input/<slug>/ \
+    --model-dir /kaggle/working/out --match-id 2393895
 ```
 
-The `ensemble.py` output includes a side-by-side test comparison of the **meta-NN vs the standalone tuned LightGBM** on the same rows so you can verify the lift is real.
+The `ensemble.py` output includes a **side-by-side test comparison of meta-NN vs the standalone tuned LightGBM** on the same rows so you can verify the lift is real.
+
+`tune.py` supports `--only task1,task2` to run a single subset, and `--skip` to exclude one. `--n-trials-task name=N` is repeatable for per-task overrides.
+
+## What's "best so far" (measured on chronological test split)
+
+| Task | Best model | Test metric |
+|---|---|---|
+| 1. Match winner (series) | Tuned LGB (`task_match_winner_lgbm_tuned.txt`) | **AUC 0.730 / log-loss 0.595** |
+| 2. Map winner (total, after OT) | Meta-NN | **AUC 0.671** |
+| 3. Map winner regulation (3-class) | Meta-NN | **acc 0.568 / log-loss 0.918** |
+| 4a. Pistol R1 | Meta-NN | **AUC 0.567** |
+| 4b. Pistol R13 | Meta-NN | **AUC 0.550** |
+| 5a. Team 1 rounds | Tuned LGB | **MAE 2.70 / RMSE 3.53** |
+| 5b. Team 2 rounds | Meta-NN | MAE 3.27 / RMSE 4.02 |
+| 5c. Total rounds | Meta-NN | **MAE 3.42 / RMSE 4.81** |
+| Bonus. Live in-game | `rounds_lgbm.txt` | **AUC 0.842 overall, 0.93 at R24** |
 
 ## Multi-task neural net (`mtl.py`)
 

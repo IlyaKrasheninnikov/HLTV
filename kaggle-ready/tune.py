@@ -222,61 +222,82 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="./")
     ap.add_argument("--output", default=None)
-    ap.add_argument("--n-trials", type=int, default=120)
+    ap.add_argument("--n-trials", type=int, default=120,
+                    help="default trial count; override per task with --n-trials-task name=N")
+    ap.add_argument("--n-trials-task", action="append", default=[],
+                    help="task=N (repeatable); e.g. --n-trials-task match_winner=200")
     ap.add_argument("--skip", default="", help="comma-separated tasks to skip")
+    ap.add_argument("--only", default="", help="comma-separated tasks to run (skips all others)")
     args = ap.parse_args()
 
     inp = Path(args.input).resolve()
     out_dir = Path(args.output).resolve() if args.output else inp
     out_dir.mkdir(parents=True, exist_ok=True)
     skip = set(s.strip() for s in args.skip.split(",") if s.strip())
-    print(f"input: {inp}\noutput: {out_dir}\ntrials per task: {args.n_trials}\nskipping: {skip}")
+    only = set(s.strip() for s in args.only.split(",") if s.strip())
+    per_task_n: dict[str, int] = {}
+    for spec in args.n_trials_task:
+        if "=" in spec:
+            k, v = spec.split("=", 1)
+            per_task_n[k.strip()] = int(v.strip())
+
+    def n_for(name: str) -> int:
+        return per_task_n.get(name, args.n_trials)
+
+    def runs(name: str) -> bool:
+        if only and name not in only: return False
+        return name not in skip
+
+    print(f"input: {inp}\noutput: {out_dir}\ntrials per task (default): {args.n_trials}")
+    if per_task_n: print(f"per-task overrides: {per_task_n}")
+    if only: print(f"only: {only}")
+    if skip: print(f"skipping: {skip}")
 
     results: dict[str, Any] = {}
 
     # Task 1: match winner
-    if "match_winner" not in skip:
+    if runs("match_winner"):
         df = pd.read_parquet(inp / "prematch_features.parquet")
         df = df[df[["t1_n","t2_n"]].fillna(0).max(axis=1) > 0]
         results["match_winner"] = sweep_task(
             "match_winner", df, "y_team1_wins", NON_PRE, CATS_PRE, "binary",
-            out_dir, n_trials=args.n_trials)
+            out_dir, n_trials=n_for("match_winner"))
 
     df_map = pd.read_parquet(inp / "permap_features.parquet")
     df_map = df_map[df_map[["t1_n","t2_n"]].fillna(0).max(axis=1) > 0]
 
-    if "map_winner_total" not in skip:
+    if runs("map_winner_total"):
         results["map_winner_total"] = sweep_task(
             "map_winner_total", df_map, "y_team1_wins_map", NON_MAP_ALL, CATS_MAP, "binary",
-            out_dir, n_trials=args.n_trials)
-    if "map_winner_regulation" not in skip:
+            out_dir, n_trials=n_for("map_winner_total"))
+    if runs("map_winner_regulation"):
         results["map_winner_regulation"] = sweep_task(
             "map_winner_regulation", df_map, "y_regulation_winner",
             NON_MAP_ALL, CATS_MAP, "multiclass",
-            out_dir, n_trials=args.n_trials, n_classes=3,
+            out_dir, n_trials=n_for("map_winner_regulation"), n_classes=3,
             class_map={"t1": 0, "t2": 1, "tie": 2})
-    if "pistol_r1" not in skip:
+    if runs("pistol_r1"):
         results["pistol_r1"] = sweep_task(
             "pistol_r1", df_map.dropna(subset=["y_pistol_r1_t1_wins"]),
             "y_pistol_r1_t1_wins", NON_MAP_ALL, CATS_MAP, "binary",
-            out_dir, n_trials=args.n_trials)
-    if "pistol_r13" not in skip:
+            out_dir, n_trials=n_for("pistol_r1"))
+    if runs("pistol_r13"):
         results["pistol_r13"] = sweep_task(
             "pistol_r13", df_map.dropna(subset=["y_pistol_r13_t1_wins"]),
             "y_pistol_r13_t1_wins", NON_MAP_ALL, CATS_MAP, "binary",
-            out_dir, n_trials=args.n_trials)
-    if "t1_rounds" not in skip:
+            out_dir, n_trials=n_for("pistol_r13"))
+    if runs("t1_rounds"):
         results["t1_rounds"] = sweep_task(
             "t1_rounds", df_map, "t1_rounds", NON_MAP_ALL, CATS_MAP, "poisson",
-            out_dir, n_trials=args.n_trials)
-    if "t2_rounds" not in skip:
+            out_dir, n_trials=n_for("t1_rounds"))
+    if runs("t2_rounds"):
         results["t2_rounds"] = sweep_task(
             "t2_rounds", df_map, "t2_rounds", NON_MAP_ALL, CATS_MAP, "poisson",
-            out_dir, n_trials=args.n_trials)
-    if "total_rounds" not in skip:
+            out_dir, n_trials=n_for("t2_rounds"))
+    if runs("total_rounds"):
         results["total_rounds"] = sweep_task(
             "total_rounds", df_map, "total_rounds", NON_MAP_ALL, CATS_MAP, "poisson",
-            out_dir, n_trials=args.n_trials)
+            out_dir, n_trials=n_for("total_rounds"))
 
     print("\n" + "=" * 60); print("TUNED SUMMARY"); print("=" * 60)
     for k, v in results.items():

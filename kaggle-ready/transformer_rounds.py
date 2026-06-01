@@ -193,7 +193,11 @@ class RoundTransformer(nn.Module):
         tok = tok + pos + static.unsqueeze(1)
         tok = self.input_norm(tok)
         key_padding_mask = (mask == 0)
-        h = self.encoder(tok, src_key_padding_mask=key_padding_mask)  # (B, T, d_model)
+        # CAUSAL mask: position t may only attend to positions <= t. Without this,
+        # the model peeks at future rounds and trivially reconstructs the final
+        # score, leading to AUC = 1.0 at round 1 (impossible in real life).
+        causal = torch.triu(torch.ones(T, T, device=tok.device, dtype=torch.bool), diagonal=1)
+        h = self.encoder(tok, mask=causal, src_key_padding_mask=key_padding_mask)
         return self.head(h).squeeze(-1)                              # (B, T) per-round logit
 
 

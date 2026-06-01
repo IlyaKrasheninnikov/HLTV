@@ -1,22 +1,30 @@
 """TabPFN v2 across our 8 task targets.
 
 TabPFN is a foundation-model classifier/regressor for small tabular data
-(< ~10k rows). On Kaggle T4 it inference-trains in seconds per task. Should
-match or beat tuned LightGBM on most of our tasks at this dataset size.
+(< ~10k rows). On Kaggle T4 it inference-trains in seconds per task.
 
 Reference: https://github.com/PriorLabs/TabPFN (TabPFN v2, ICLR 2025 Notable)
 
-Usage:
+License gating:
+  TabPFN v2 needs a one-time license acceptance + API key to download weights.
+  On Kaggle (no browser, no stdin), do this FIRST in a cell BEFORE running:
+
+      import os
+      os.environ["TABPFN_API_KEY"] = "YOUR_KEY_HERE"
+      # Get your key by signing in at https://ux.priorlabs.ai/login (any browser)
+      # then accepting the license on /licenses and copying from /account.
+
+  Alternative: use the hosted client (no local weights needed). Pass --hosted.
+      You'll still need TABPFN_API_KEY set; inference happens on Prior Labs' servers.
+
+Usage on Kaggle:
     !pip install -q -r /kaggle/input/<slug>/requirements.txt
-    !pip install -q tabpfn  # downloads ~700MB checkpoint on first run
+    !pip install -q tabpfn         # local inference
+    # OR for hosted:
+    !pip install -q tabpfn-client
+    # Set TABPFN_API_KEY in a previous cell, then:
     !python /kaggle/input/<slug>/tabpfn_run.py \
         --input /kaggle/input/<slug>/ --output /kaggle/working/out
-
-Notes:
-  - GPU is auto-used. CPU works but ~30x slower.
-  - TabPFN max 500-2000 train rows in classic mode; we use the "many-class" mode
-    with subsample if needed.
-  - Categoricals are passed as ordinal integers (TabPFN handles them internally).
 """
 from __future__ import annotations
 import argparse, json, time
@@ -84,9 +92,35 @@ def _maybe_subsample(X, y, max_rows: int, seed: int = 42):
     return X[idx], y[idx]
 
 
-def run_binary(name, df, target, drop, cats, out_dir, device, max_rows=8000):
-    from tabpfn import TabPFNClassifier
-    print(f"\n=== {name} (binary, TabPFN) ===")
+def _get_classes(hosted: bool):
+    if hosted:
+        from tabpfn_client import TabPFNClassifier, TabPFNRegressor
+        return TabPFNClassifier, TabPFNRegressor
+    from tabpfn import TabPFNClassifier, TabPFNRegressor
+    return TabPFNClassifier, TabPFNRegressor
+
+
+def _check_license_or_die(hosted: bool):
+    """Fail fast and loudly if TabPFN can't proceed (license, key, etc.)."""
+    import os
+    key = os.environ.get("TABPFN_API_KEY") or os.environ.get("PRIORLABS_API_KEY")
+    if not key and not hosted:
+        # Local mode CAN run without a key IF the user accepted the license interactively
+        # and weights are already cached on disk; otherwise it prompts on stdin and hangs.
+        # Detect cache presence to decide if we should warn.
+        cache = Path(os.environ.get("HOME", "")) / ".cache" / "tabpfn"
+        if not cache.exists():
+            print("[tabpfn] WARNING: no TABPFN_API_KEY set and no cached weights.")
+            print("[tabpfn] On Kaggle, set TABPFN_API_KEY in a prior cell before running")
+            print("[tabpfn] this script. Otherwise TabPFN will try to prompt on stdin and hang.")
+            print("[tabpfn] Get a key: https://ux.priorlabs.ai/login")
+    if hosted and not key:
+        raise SystemExit("[tabpfn] --hosted requires TABPFN_API_KEY in env. Aborting.")
+
+
+def run_binary(name, df, target, drop, cats, out_dir, device, max_rows=8000, hosted=False):
+    TabPFNClassifier, _ = _get_classes(hosted)
+    print(f"\n=== {name} (binary, TabPFN{'-hosted' if hosted else ''}) ===")
     tr, te = split_chrono(df)
     X_tr_df, y_tr = _to_xy(tr, target, drop, cats)
     X_te_df, y_te = _to_xy(te, target, drop, cats)
@@ -95,7 +129,9 @@ def run_binary(name, df, target, drop, cats, out_dir, device, max_rows=8000):
     X_tr, y_tr = _maybe_subsample(X_tr, y_tr, max_rows)
     print(f"  train rows: {len(X_tr)}  test rows: {len(X_te)}  feats: {X_tr.shape[1]}")
     t0 = time.time()
-    clf = TabPFNClassifier(device=device, n_estimators=8, ignore_pretraining_limits=True)
+    kwargs = dict(n_estimators=8, ignore_pretraining_limits=True)
+    if not hosted: kwargs["device"] = device
+    clf = TabPFNClassifier(**kwargs)
     clf.fit(X_tr, y_tr)
     p = clf.predict_proba(X_te)[:, 1]
     elapsed = time.time() - t0
@@ -115,9 +151,9 @@ def run_binary(name, df, target, drop, cats, out_dir, device, max_rows=8000):
     return out
 
 
-def run_multiclass(name, df, target, drop, cats, classes, out_dir, device, max_rows=8000):
-    from tabpfn import TabPFNClassifier
-    print(f"\n=== {name} (multiclass {len(classes)}, TabPFN) ===")
+def run_multiclass(name, df, target, drop, cats, classes, out_dir, device, max_rows=8000, hosted=False):
+    TabPFNClassifier, _ = _get_classes(hosted)
+    print(f"\n=== {name} (multiclass {len(classes)}, TabPFN{'-hosted' if hosted else ''}) ===")
     tr, te = split_chrono(df)
     X_tr_df, y_tr = _to_xy(tr, target, drop, cats)
     X_te_df, y_te = _to_xy(te, target, drop, cats)
@@ -128,7 +164,9 @@ def run_multiclass(name, df, target, drop, cats, classes, out_dir, device, max_r
     X_tr, y_tr = _maybe_subsample(X_tr, y_tr, max_rows)
     print(f"  train: {len(X_tr)}  test: {len(X_te)}  feats: {X_tr.shape[1]}")
     t0 = time.time()
-    clf = TabPFNClassifier(device=device, n_estimators=8, ignore_pretraining_limits=True)
+    kwargs = dict(n_estimators=8, ignore_pretraining_limits=True)
+    if not hosted: kwargs["device"] = device
+    clf = TabPFNClassifier(**kwargs)
     clf.fit(X_tr, y_tr)
     p = clf.predict_proba(X_te)
     elapsed = time.time() - t0
@@ -148,9 +186,9 @@ def run_multiclass(name, df, target, drop, cats, classes, out_dir, device, max_r
     return out
 
 
-def run_regression(name, df, target, drop, cats, out_dir, device, max_rows=8000):
-    from tabpfn import TabPFNRegressor
-    print(f"\n=== {name} (regression, TabPFN) ===")
+def run_regression(name, df, target, drop, cats, out_dir, device, max_rows=8000, hosted=False):
+    _, TabPFNRegressor = _get_classes(hosted)
+    print(f"\n=== {name} (regression, TabPFN{'-hosted' if hosted else ''}) ===")
     tr, te = split_chrono(df)
     X_tr_df, y_tr = _to_xy(tr, target, drop, cats)
     X_te_df, y_te = _to_xy(te, target, drop, cats)
@@ -159,7 +197,9 @@ def run_regression(name, df, target, drop, cats, out_dir, device, max_rows=8000)
     X_tr, y_tr = _maybe_subsample(X_tr, y_tr, max_rows)
     print(f"  train: {len(X_tr)}  test: {len(X_te)}  feats: {X_tr.shape[1]}")
     t0 = time.time()
-    reg = TabPFNRegressor(device=device, n_estimators=8, ignore_pretraining_limits=True)
+    kwargs = dict(n_estimators=8, ignore_pretraining_limits=True)
+    if not hosted: kwargs["device"] = device
+    reg = TabPFNRegressor(**kwargs)
     reg.fit(X_tr, y_tr)
     p = reg.predict(X_te)
     elapsed = time.time() - t0
@@ -187,7 +227,10 @@ def main():
     ap.add_argument("--device", default=None, help="cuda / cpu (auto)")
     ap.add_argument("--max-train-rows", type=int, default=8000,
                     help="cap training rows fed to TabPFN")
+    ap.add_argument("--hosted", action="store_true",
+                    help="use the hosted TabPFN client (requires TABPFN_API_KEY env var)")
     args = ap.parse_args()
+    _check_license_or_die(hosted=args.hosted)
 
     inp = Path(args.input).resolve()
     out_dir = Path(args.output).resolve() if args.output else inp
@@ -209,7 +252,7 @@ def main():
         df = df[df[["t1_n","t2_n"]].fillna(0).max(axis=1) > 0]
         results["match_winner"] = run_binary(
             "match_winner", df, "y_team1_wins", NON_PRE, CATS_PRE, out_dir, device,
-            args.max_train_rows)
+            args.max_train_rows, hosted=args.hosted)
 
     # per-map tasks
     df_map = pd.read_parquet(inp / "permap_features.parquet")
@@ -218,33 +261,33 @@ def main():
     if "map_winner_total" not in skip:
         results["map_winner_total"] = run_binary(
             "map_winner_total", df_map, "y_team1_wins_map", NON_MAP_ALL, CATS_MAP,
-            out_dir, device, args.max_train_rows)
+            out_dir, device, args.max_train_rows, hosted=args.hosted)
     if "map_winner_regulation" not in skip:
         results["map_winner_regulation"] = run_multiclass(
             "map_winner_regulation", df_map, "y_regulation_winner",
-            NON_MAP_ALL, CATS_MAP, ["t1","t2","tie"], out_dir, device, args.max_train_rows)
+            NON_MAP_ALL, CATS_MAP, ["t1","t2","tie"], out_dir, device, args.max_train_rows, hosted=args.hosted)
     if "pistol_r1" not in skip:
         results["pistol_r1"] = run_binary(
             "pistol_r1", df_map.dropna(subset=["y_pistol_r1_t1_wins"]),
             "y_pistol_r1_t1_wins", NON_MAP_ALL, CATS_MAP,
-            out_dir, device, args.max_train_rows)
+            out_dir, device, args.max_train_rows, hosted=args.hosted)
     if "pistol_r13" not in skip:
         results["pistol_r13"] = run_binary(
             "pistol_r13", df_map.dropna(subset=["y_pistol_r13_t1_wins"]),
             "y_pistol_r13_t1_wins", NON_MAP_ALL, CATS_MAP,
-            out_dir, device, args.max_train_rows)
+            out_dir, device, args.max_train_rows, hosted=args.hosted)
     if "t1_rounds" not in skip:
         results["t1_rounds"] = run_regression(
             "t1_rounds", df_map, "t1_rounds", NON_MAP_ALL, CATS_MAP,
-            out_dir, device, args.max_train_rows)
+            out_dir, device, args.max_train_rows, hosted=args.hosted)
     if "t2_rounds" not in skip:
         results["t2_rounds"] = run_regression(
             "t2_rounds", df_map, "t2_rounds", NON_MAP_ALL, CATS_MAP,
-            out_dir, device, args.max_train_rows)
+            out_dir, device, args.max_train_rows, hosted=args.hosted)
     if "total_rounds" not in skip:
         results["total_rounds"] = run_regression(
             "total_rounds", df_map, "total_rounds", NON_MAP_ALL, CATS_MAP,
-            out_dir, device, args.max_train_rows)
+            out_dir, device, args.max_train_rows, hosted=args.hosted)
 
     print("\n" + "=" * 60); print("TABPFN SUMMARY"); print("=" * 60)
     for k, v in results.items():

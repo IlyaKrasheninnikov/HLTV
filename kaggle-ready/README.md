@@ -73,6 +73,29 @@ Scraped from hltv.org. 3,288 CS2 matches with ≥1 star (Majors, IEM, BLAST, ESL
 
 Each match contributes ~2-5 played maps, each map contributes ~16-30 rounds.
 
+## Best-result recipe (use this!)
+
+Run these three in order. Final results live in `/kaggle/working/out/`.
+
+```python
+# install
+!pip install -q -r /kaggle/input/<slug>/requirements.txt
+!pip install -q optuna
+
+# 1) baseline (~1 min)
+!python /kaggle/input/<slug>/run.py --input /kaggle/input/<slug>/ --output /kaggle/working/out
+
+# 2) Optuna sweep per task — 80 trials each, ~30-60 min total on Kaggle CPU.
+#    Bump --n-trials for more lift if time allows.
+!python /kaggle/input/<slug>/tune.py --input /kaggle/input/<slug>/ --output /kaggle/working/out --n-trials 80
+
+# 3) Meta-ensemble: OOF tuned-LGB preds -> small GPU NN with 7 heads.
+#    Reads tuned params from /kaggle/working/out automatically.
+!python /kaggle/input/<slug>/ensemble.py --input /kaggle/input/<slug>/ --output /kaggle/working/out
+```
+
+The `ensemble.py` output includes a side-by-side test comparison of the **meta-NN vs the standalone tuned LightGBM** on the same rows so you can verify the lift is real.
+
 ## Multi-task neural net (`mtl.py`)
 
 Single PyTorch model with a shared MLP trunk and 8 task-specific heads, jointly trained on `permap_features.parquet`. NaN labels (pistols missing on some maps) are masked per-batch so each head only sees real examples. Losses: BCE for binary heads, cross-entropy for the 3-class regulation winner, Poisson NLL for the round-count regressions. Auxiliary "is_overtime_map" head helps the trunk shape useful representations even when it's not the target.

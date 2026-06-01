@@ -73,6 +73,29 @@ Scraped from hltv.org. 3,288 CS2 matches with ≥1 star (Majors, IEM, BLAST, ESL
 
 Each match contributes ~2-5 played maps, each map contributes ~16-30 rounds.
 
+## Prefix-N map predictor (`prefix.py`)
+
+The honest version of the "predict map winner from N already-played rounds" question. For every N in {0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24} we:
+
+1. Aggregate the first N rounds of each map into prefix summary features:
+   - current score (t1, t2, diff)
+   - count of CT/T wins, defuses, explosions
+   - pistol R1 / R13 outcomes (if N ≥ 1 / N ≥ 13)
+   - mean equipment values, last-1 and last-3 round outcomes from t1's perspective
+   - rolling first-half / second-half win rate
+2. Join with the same pre-match features the other models use.
+3. Train LightGBM. Report test AUC, log-loss, Brier.
+
+This gives an honest "AUC vs how many rounds we've seen" curve — directly answers "if I've watched N rounds, how confident can I be in the winner".
+
+```python
+!python /kaggle/input/<slug>/prefix.py \
+    --input /kaggle/input/<slug>/ --output /kaggle/working/out \
+    --ns 0,1,2,3,4,6,8,10,12,15,18,21,24
+```
+
+Output: `prefix_summary.csv` and `prefix_summary.json` with one row per N. Add `--save-models` if you want the LightGBM booster per N persisted as a file.
+
 ## Modern-architecture experiments (Kaggle GPU)
 
 Two scripts that try modern architectures aimed at beating the LightGBM + meta-ensemble pipeline:

@@ -5,11 +5,18 @@ Self-contained dataset + training script. Drop the folder into a Kaggle dataset,
 ## Quickstart (Kaggle)
 
 ```python
+# 1) LightGBM baseline (8 task-specific models + optional live model)
 !pip install -q -r /kaggle/input/hltv-cs2/requirements.txt
 !python /kaggle/input/hltv-cs2/run.py --input /kaggle/input/hltv-cs2/ --output /kaggle/working/
+
+# 2) Multi-task neural net (one shared trunk + 8 heads). Auto-uses GPU if available.
+#    torch is preinstalled on Kaggle; if you're somewhere else use:
+#    !pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+!python /kaggle/input/hltv-cs2/mtl.py --input /kaggle/input/hltv-cs2/ --output /kaggle/working/
 ```
 
 Replace `hltv-cs2` with whatever slug you used when creating the Kaggle dataset.
+**Pick a forward slash output path** like `/kaggle/working/out`, not `out\`.
 
 ## Quickstart (local)
 
@@ -66,10 +73,19 @@ Scraped from hltv.org. 3,288 CS2 matches with ≥1 star (Majors, IEM, BLAST, ESL
 
 Each match contributes ~2-5 played maps, each map contributes ~16-30 rounds.
 
+## Multi-task neural net (`mtl.py`)
+
+Single PyTorch model with a shared MLP trunk and 8 task-specific heads, jointly trained on `permap_features.parquet`. NaN labels (pistols missing on some maps) are masked per-batch so each head only sees real examples. Losses: BCE for binary heads, cross-entropy for the 3-class regulation winner, Poisson NLL for the round-count regressions. Auxiliary "is_overtime_map" head helps the trunk shape useful representations even when it's not the target.
+
+What to expect vs the LightGBM baselines:
+- **Pistols, totals, regulation**: where MTL most often helps. Shared trunk regularizes the noisy tasks.
+- **Map winner total**: should match or slightly beat LightGBM (~0.66).
+- **Match winner is NOT in `mtl.py`** — it lives in `prematch_features.parquet`, a different table. Keep using `run.py` for that one task.
+
 ## What to try next on Kaggle
 
 1. **Optuna sweep** on `task_match_winner` — easy +0.005-0.015 AUC.
-2. **Multi-task head** sharing a trunk across all tasks — should help the noisy tasks (pistols, total rounds).
+2. **Tune MTL loss weights** — currently `{map_total:1.0, map_reg:0.7, pistol1:1.3, pistol13:1.3, ot:0.3, t1r/t2r/totalr:0.4}`. Optuna these per-head weights.
 3. **Transformer over rounds** for the live model — current LightGBM round model is at AUC 0.84; sequence context might push toward 0.87.
 4. **Per-player pistol-W%** from demo parsing — addresses the main weakness of the pistol task.
 5. **Betting backtest** if you obtain historical odds (HLTV doesn't carry them — try Pinnacle, bo3.gg).
